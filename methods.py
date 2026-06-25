@@ -1,19 +1,20 @@
-import pyautogui
 import numpy as np
 import pynput
 import pyperclip
-import threading
-from overlay import ScreenOverlay
-import time
+
 
 def sort_points(points):
-    return sorted(points, key=lambda point: point[0])
+    return sorted(points, key=lambda point: point[0][0])
 
 def get_points(overlay, zz, tile_to_pixel):
     points = []
+    funcs = ["double_abs", "step", "spike"]
+    func_index = 0
+
+    overlay.root.after_idle(overlay.set_current_type, funcs[func_index])
+
     def on_click(x, y, button, pressed):
         if pressed:
-            #right click to end the choosing phase
             if button == pynput.mouse.Button.right:
                 return False
 
@@ -23,11 +24,12 @@ def get_points(overlay, zz, tile_to_pixel):
                 point_relative = (point[0] - zz[0], zz[1] - point[1])
                 point_tile = (point_relative[0] / tile_to_pixel, point_relative[1] / tile_to_pixel)
                 print(f"{point_tile = }")
-                points.append(point_tile)
-                overlay.root.after_idle(overlay.draw_circle, x, y)
+                points.append((point_tile, funcs[func_index]))
+                overlay.root.after_idle(overlay.draw_circle, x, y, funcs[func_index])
 
     def on_press(key):
         nonlocal points
+        nonlocal func_index
 
         if key == pynput.keyboard.Key.backspace:
             if points:
@@ -35,6 +37,11 @@ def get_points(overlay, zz, tile_to_pixel):
                 points.pop()
                 overlay.root.after_idle(overlay.remove_last_circle)
                 print(f"{points = }")
+
+        if key == pynput.keyboard.Key.right:
+            func_index = (func_index + 1) % len(funcs)
+            print(f"currently selected: {funcs[func_index]}")
+            overlay.root.after_idle(overlay.set_current_type, funcs[func_index])
 
     mouse_listener = pynput.mouse.Listener(on_click=on_click)
     keyboard_listener = pynput.keyboard.Listener(on_press=on_press)
@@ -51,38 +58,67 @@ def double_abs(x: np.ndarray, a, b, c) -> np.ndarray:
 def h_slope(pos1, pos2):
     return (pos2[1]-pos1[1])/(2*(pos2[0]-pos1[0]+1e-5))
 
-def step(x: np.ndarray, a, h) -> np.ndarray:
-    h/(1+np.exp(-100*(x-a)))
+def h_slope2(x1, y1, x2, y2):
+    return (y2-y1)/(2*(x2-x1+1e-5))
 
-def function_generator(player_pos_tile, other_points, type='double_abs'):
-    if (len(other_points) < 2):
+def step(x: np.ndarray, a, h) -> np.ndarray:
+    return h/(1+np.exp(-100*(x-a)))
+
+def spike(x: np.ndarray, h, a):
+    return h/((np.pow((50*(x - a)), 2)) + 1)
+
+def function_generator(point_function: list[tuple[tuple[float, float], str]]):
+    if (len(point_function) < 2):
         print("not enough points")
         return -1
 
-    x_points = np.linspace(player_pos_tile[0], other_points[-1][0], 2000)
+    x_points = np.linspace(point_function[0][0][0], point_function[-1][0][0], 2000) #linspace between the first x to the last x values
     functions = []
-    if type == 'double_abs':
-        for i in range(1, len(other_points)):
-            a = h_slope(other_points[i-1], other_points[i])
-            b = other_points[i-1][0]
-            c = other_points[i][0]
-            points2 = double_abs(x_points, a, b, c)
+    LNSI = 0  # LNSI = last_non_spike_index
+
+    for i in range(1, len(point_function)):
+        if point_function[i-1][1] != "spike":
+            LNSI = i-1
+
+        if point_function[i][1] == "double_abs":
+            if point_function[i-1][1] == "spike":
+                a = h_slope2(point_function[i-1][0][0], point_function[LNSI][0][1], point_function[i][0][0], point_function[i][0][1])
+            else:
+                a = h_slope(point_function[i-1][0], point_function[i][0])
+
+            if i == 1:
+                b = point_function[i - 1][0][0] + 0.2  # there is an offset so it wont skip it
+            else:
+                b = point_function[i - 1][0][0]
+
+            c = point_function[i][0][0]
 
             func_string = f"{a:.2f}*(abs(x-{b:.2f})-abs(x-{c:.2f}))"
             functions.append(func_string)
-    elif type == "step":
-        for i in range(1, len(other_points)):
-            h = other_points[i][1] - other_points[i-1][1]
-            if i == 1:
-                a = other_points[i - 1][0] + 0.2 #could also be i and there is an offset so it wont skip it
+
+        elif point_function[i][1] == "step":
+            if point_function[i - 1][1] == "spike":
+                h = point_function[i][0][1] - point_function[LNSI][0][1]
             else:
-                a = other_points[i - 1][0]
-            try:
-                points2 = step(x_points, a, h)
-            except RuntimeError or OverflowError or RuntimeWarning:
-                continue
+                h = point_function[i][0][1] - point_function[i - 1][0][1]
+
+            if i == 1:
+                a = point_function[i - 1][0][0] + 0.2  #there is an offset so it wont skip it
+            else:
+                a = point_function[i - 1][0][0]
 
             func_string = f"{h:.2f}/(1+exp(-100(x-{a:.2f})))"
+            functions.append(func_string)
+
+        elif point_function[i][1] == "spike":
+            if point_function[i - 1][1] == "spike":
+                h = point_function[i][0][1] - point_function[LNSI][0][1]
+            else:
+                h = point_function[i][0][1] - point_function[i - 1][0][1]
+
+            a = point_function[i][0][0]
+
+            func_string = f"{h:.2f}/(((30(x-{a:.2f}))^2)+1)"
             functions.append(func_string)
 
     all_funcs = "+".join(functions)
@@ -91,4 +127,4 @@ def function_generator(player_pos_tile, other_points, type='double_abs'):
     all_funcs = all_funcs.replace("-+", "-")
     print(all_funcs)
     pyperclip.copy(all_funcs)
-    return x_points, points2, all_funcs
+    #return x_points, points2, all_funcs
