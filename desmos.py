@@ -1,5 +1,5 @@
 import pygame
-from graphwar2 import *
+from graphwar2 import function_generator, tile_to_pixel
 
 pygame.init()
 
