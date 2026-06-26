@@ -1,10 +1,12 @@
 import tkinter as tk
+import numpy as np
 
 class ScreenOverlay:
     def __init__(self, radius=15):
         self.root = None
         self.canvas = None
-        self.coords: list[tuple[tuple[float, float], str]] = []
+        self.points = []
+        self.coords = []
 
         self.radius = radius
         self.type1 = "double_abs"
@@ -22,13 +24,21 @@ class ScreenOverlay:
         self.root.bind('<Escape>', lambda e: self.close())
         self.root.mainloop()
 
-    def draw_circle(self, x, y, type2):
+    def set_points(self, points1):
+        self.points = points1
+        self.redraw()
+
+        if self.root:
+            self.root.update()
+
+    def draw_circle(self, x, y):
         if self.canvas and self.root:
-            self.coords.append(((x, y), type2))
+            self.coords.append((x, y))
             self.redraw()
 
     def remove_last_circle(self):
-        if self.coords and self.canvas:
+        if self.points and self.canvas:
+            self.points.pop()
             self.coords.pop()
             self.redraw()
 
@@ -37,13 +47,15 @@ class ScreenOverlay:
         if self.canvas:
             self.redraw()
 
-    def sort_coords(self):
-        if self.coords:
-            self.coords.sort(key=lambda point: point[0][0])
+    def sort_points(self):
+        if len(self.points) > 0:
+            self.points = self.points[self.points[:, 0].argsort()]
+
+        self.coords.sort(key=lambda point: point[0])
 
     def redraw(self):
         self.canvas.delete("all")
-        self.sort_coords()
+        self.sort_points()
 
         self.canvas.create_text(
             30, 30,
@@ -52,41 +64,15 @@ class ScreenOverlay:
             font=('Arial', 18, 'bold'),
             anchor='nw'
         )
-        LNSI = 0 #LNSI = last_non_spike_index
-        for i in range(1, len(self.coords)):
-            prev_x, prev_y = self.coords[i - 1][0]
-            curr_x, curr_y = self.coords[i][0]
 
-            if self.coords[i-1][1] != "spike":
-                LNSI = i-1
+        for i in range(1, len(self.points)):
+            curr_x, curr_y = self.points[i]
+            prev_x, prev_y = self.points[i-1]
 
-            match self.coords[i][1]:
-                case "double_abs":
-                    if self.coords[i-1][1] == "spike":
-                        self.canvas.create_line(prev_x, self.coords[LNSI][0][1], curr_x, curr_y, fill='cyan', width=1)
-                    else:
-                        self.canvas.create_line(prev_x, prev_y, curr_x, curr_y, fill='cyan', width=1)
+            self.canvas.create_line(prev_x, prev_y, curr_x, curr_y, fill='cyan', width=1)
 
-                case "step":
-                    if self.coords[i-1][1] == "spike":
-                        self.canvas.create_line(prev_x, self.coords[LNSI][0][1], curr_x, self.coords[LNSI][0][1], fill='cyan', width=1)
-                        self.canvas.create_line(curr_x, self.coords[LNSI][0][1], curr_x, curr_y, fill='cyan', width=1)
-                    else:
-                        self.canvas.create_line(prev_x, prev_y, prev_x, curr_y, fill='cyan', width=1)
-                        self.canvas.create_line(prev_x, curr_y, curr_x, curr_y, fill='cyan', width=1)
-
-                case "spike":
-                    if self.coords[i - 1][1] == "spike":
-                        self.canvas.create_line(prev_x, self.coords[LNSI][0][1], curr_x, self.coords[LNSI][0][1], fill='cyan', width=1)
-                        self.canvas.create_line(curr_x, self.coords[LNSI][0][1], curr_x, curr_y, fill='cyan', width=1)
-                        self.canvas.create_line(curr_x, curr_y, curr_x, self.coords[LNSI][0][1], fill='cyan', width=1)
-                    else:
-                        self.canvas.create_line(prev_x, prev_y, curr_x, prev_y, fill='cyan', width=1)
-                        self.canvas.create_line(curr_x, prev_y, curr_x, curr_y, fill='cyan', width=1)
-                        self.canvas.create_line(curr_x, curr_y, curr_x, prev_y, fill='cyan', width=1)
-
-        for t in self.coords:
-            cx, cy = t[0]
+        for point in self.coords:
+            cx, cy = point
             self.canvas.create_oval(cx - self.radius, cy - self.radius, cx + self.radius, cy + self.radius, outline='cyan', width=2)
 
     def close(self):
