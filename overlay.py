@@ -5,12 +5,13 @@ class ScreenOverlay:
     def __init__(self, radius=15):
         self.root = None
         self.canvas = None
+        self.entry = None
         self.points = []
         self.coords = []
 
         self.radius = radius
-        self.type1 = "double_abs"
         self.current_type = "double_abs"
+        self.custom_text = ""
 
     def start(self):
         self.root = tk.Tk()
@@ -21,8 +22,25 @@ class ScreenOverlay:
         self.canvas = tk.Canvas(self.root, bg='black', highlightthickness=0)
         self.canvas.pack(fill='both', expand=True)
 
+        self.entry = tk.Entry(
+            self.root,
+            bg='dark slate gray',
+            fg='cyan',
+            insertbackground='cyan',
+            font=('Arial', 14),
+            bd=2,
+            relief='groove'
+        )
+        self.canvas.create_window(30, 80, window=self.entry, anchor='nw', width=200)
+
+        self.entry.focus_set()
         self.root.bind('<Escape>', lambda e: self.close())
+        self.entry.bind('<Return>', lambda e: self.handle_text_submit())
         self.root.mainloop()
+
+    def handle_text_submit(self):
+        user_text = self.entry.get()
+        print(f"function typed: {user_text}")
 
     def set_points(self, points1):
         self.points = points1
@@ -64,6 +82,9 @@ class ScreenOverlay:
             font=('Arial', 18, 'bold'),
             anchor='nw'
         )
+
+        if self.entry:
+            self.canvas.create_window(30, 80, window=self.entry, anchor='nw', width=200)
 
         for i in range(1, len(self.points)):
             curr_x, curr_y = self.points[i]

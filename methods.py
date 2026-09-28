@@ -7,10 +7,13 @@ import threading
 def sort_points(points):
     return sorted(points, key=lambda point: point[0][0])
 
+def is_valid_function(func_str):
+    return True
 
 def get_points(overlay, zz, tile_to_pixel):
     points = []
     funcs = ["double_abs", "step", "spike"]
+    custom_funcs = ""
     func_index = 0
 
     data_ready = threading.Event()
@@ -27,7 +30,7 @@ def get_points(overlay, zz, tile_to_pixel):
                 continue
 
             points_c = sort_points(curr_points)
-            x_vals, func_str = function_generator(points_c)
+            x_vals, func_str = function_generator(points_c, custom_funcs)
             y_vals = evaluate(func_str, x_vals)
 
             expected_start_y = points_c[0][0][1]
@@ -58,6 +61,7 @@ def get_points(overlay, zz, tile_to_pixel):
     def on_press(key):
         nonlocal points
         nonlocal func_index
+        nonlocal custom_funcs
 
         if key == pynput.keyboard.Key.backspace:
             if points:
@@ -70,6 +74,11 @@ def get_points(overlay, zz, tile_to_pixel):
             func_index = (func_index + 1) % len(funcs)
             print(f"currently selected: {funcs[func_index]}")
             overlay.root.after_idle(overlay.set_current_type, funcs[func_index])
+
+        if key == pynput.keyboard.Key.enter:
+            func = overlay.custom_text
+            if is_valid_function(func):
+                custom_funcs += f"+{func}"
 
     mouse_listener = pynput.mouse.Listener(on_click=on_click)
     keyboard_listener = pynput.keyboard.Listener(on_press=on_press)
@@ -95,7 +104,7 @@ def step(x: np.ndarray, a, h) -> np.ndarray:
 def spike(x: np.ndarray, h, a) -> np.ndarray:
     return h/((np.pow((50*(x - a)), 2)) + 1)
 
-def function_generator(point_function: list[tuple[tuple[float, float], str]]):
+def function_generator(point_function: list[tuple[tuple[float, float], str]], funcs):
     if len(point_function) < 2:
         print("not enough points")
         return -1
@@ -150,6 +159,8 @@ def function_generator(point_function: list[tuple[tuple[float, float], str]]):
             functions.append(func_string)
 
     all_funcs = "+".join(functions)
+    if funcs != "":
+        all_funcs += funcs
     all_funcs = all_funcs.replace("--", "+")
     all_funcs = all_funcs.replace("+-", "-")
     all_funcs = all_funcs.replace("-+", "-")
@@ -160,6 +171,7 @@ def function_generator(point_function: list[tuple[tuple[float, float], str]]):
 def evaluate(func_string: str, x_points):
     func_string = func_string.replace("^", "**")
     func_string = func_string.replace("abs", "np.abs")
+    func_string = func_string.replace("sin", "np.sin")
     func_string = func_string.replace("exp", "np.ezp")
     print(func_string)
 
